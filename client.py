@@ -1,10 +1,12 @@
+import os
 import socket
 import threading
 import sys
 import bcrypt
 
 HOST = "localhost"
-PORT = 8000
+PORT = int(os.environ.get("SERVER_PORT", 8000))
+print(f"Connecting to server on {HOST}:{PORT}...")
 
 SHARED_SALT = b"$2b$12$abcdefghijklmnopqrstuu"
 
