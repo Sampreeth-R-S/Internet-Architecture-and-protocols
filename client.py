@@ -3,6 +3,7 @@ import socket
 import threading
 import sys
 import bcrypt
+import ssl
 
 HOST = "localhost"
 PORT = int(os.environ.get("SERVER_PORT", 8000))
@@ -32,7 +33,25 @@ def listen(sock):
 
 
 def run_client():
+    # Create SSL context for certificate verification
+    ssl_context = ssl.create_default_context()
+    
+    # For self-signed certificates in testing, we can either:
+    # 1. Load the CA certificate
+    # 2. Disable certificate verification (not recommended for production)
+    
+    cert_file = os.environ.get("CERT_FILE", "cert.pem")
+    if os.path.exists(cert_file):
+        # Load the server certificate for verification
+        ssl_context.load_verify_locations(cert_file)
+    else:
+        # If cert file doesn't exist, still try to connect
+        # but be aware this is less secure
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+    
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = ssl_context.wrap_socket(sock, server_hostname=HOST)
     sock.connect((HOST, PORT))
 
     user = input("Username: ")

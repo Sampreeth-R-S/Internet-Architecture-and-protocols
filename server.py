@@ -4,6 +4,7 @@ import bcrypt
 import json
 import os
 import uuid
+import ssl
 
 import redis
 
@@ -423,12 +424,22 @@ def start_server():
     threading.Thread(target=start_pubsub_listener, daemon=True).start()
     threading.Thread(target=start_heartbeat, daemon=True).start()
 
+    # Create SSL context
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.load_cert_chain(
+        certfile=os.environ.get("CERT_FILE", "cert.pem"),
+        keyfile=os.environ.get("KEY_FILE", "key.pem")
+    )
+
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((SERVER_HOST, SERVER_PORT))
+    
+    # Wrap socket with SSL
+    server = ssl_context.wrap_socket(server, server_side=True)
     server.listen()
 
-    print(f"Chat server running on {SERVER_HOST}:{SERVER_PORT}")
+    print(f"Chat server running on {SERVER_HOST}:{SERVER_PORT} (TLS enabled)")
 
     while True:
         conn, addr = server.accept()
