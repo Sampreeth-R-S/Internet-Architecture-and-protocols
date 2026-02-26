@@ -74,17 +74,56 @@ def online_users_key():
     return "online_users"
 
 
+# KEYS: [room_set_key, rooms_index_key], ARGV: [room_name]
+REMOVE_ROOM_IF_EMPTY_SCRIPT = """
+if redis.call('scard', KEYS[1]) == 0 then
+    redis.call('del', KEYS[1])
+    redis.call('srem', KEYS[2], ARGV[1])
+    return 1
+end
+return 0
+"""
+
+# KEYS: [rooms_index_key, room_set_key, session_key], ARGV: [user, room, server_id]
+ADD_USER_TO_ROOM_SCRIPT = """
+redis.call('sadd', KEYS[1], ARGV[2])
+redis.call('sadd', KEYS[2], ARGV[1])
+redis.call('hset', KEYS[3], 'room', ARGV[2], 'server', ARGV[3])
+return 1
+"""
+
+# KEYS: [active_key], ARGV: [server_id, ttl_seconds]
+REFRESH_ACTIVE_USER_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    redis.call('set', KEYS[1], ARGV[1], 'XX', 'EX', ARGV[2])
+    return 1
+end
+return 0
+"""
+
+# KEYS: [active_key], ARGV: [server_id]
+RELEASE_ACTIVE_USER_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    redis.call('del', KEYS[1])
+    return 1
+end
+return 0
+"""
+
+remove_room_if_empty_script = redis_client.register_script(REMOVE_ROOM_IF_EMPTY_SCRIPT)
+add_user_to_room_script = redis_client.register_script(ADD_USER_TO_ROOM_SCRIPT)
+refresh_active_user_script = redis_client.register_script(REFRESH_ACTIVE_USER_SCRIPT)
+release_active_user_script = redis_client.register_script(RELEASE_ACTIVE_USER_SCRIPT)
+
+
 def add_user_to_room(user, room):
-    redis_client.sadd("rooms", room)
-    redis_client.sadd(room_key(room), user)
-    redis_client.hset(session_key(user), mapping={"room": room, "server": SERVER_ID})
+    add_user_to_room_script(keys=["rooms", room_key(room), session_key(user)], args=[user, room, SERVER_ID])
 
 
 def remove_user_from_room(user, room):
     redis_client.srem(room_key(room), user)
-    if room != MAIN_ROOM and redis_client.scard(room_key(room)) == 0:
-        redis_client.delete(room_key(room))
-        redis_client.srem("rooms", room)
+    if room != MAIN_ROOM:
+        remove_room_if_empty_script(keys=[room_key(room), "rooms"], args=[room])
 
 
 def publish_room_message(room, text, sender=None):
@@ -109,24 +148,17 @@ def publish_notification(publisher, message):
 
 
 def set_active_user(user):
-    return redis_client.set(
-        active_key(user),
-        SERVER_ID,
-        nx=True,
-        ex=ACTIVE_TTL_SECONDS
+    return redis_client.set(active_key(user), SERVER_ID, nx=True, ex=ACTIVE_TTL_SECONDS
     )
 
 
 def refresh_active_user(user):
-    if redis_client.get(active_key(user)) != SERVER_ID:
-        return False
-    redis_client.set(active_key(user), SERVER_ID, xx=True, ex=ACTIVE_TTL_SECONDS)
-    return True
+    refreshed = refresh_active_user_script(keys=[active_key(user)], args=[SERVER_ID, ACTIVE_TTL_SECONDS])
+    return bool(refreshed)
 
 
 def release_active_user(user):
-    if redis_client.get(active_key(user)) == SERVER_ID:
-        redis_client.delete(active_key(user))
+    release_active_user_script(keys=[active_key(user)], args=[SERVER_ID])
 
 
 def deliver_to_local(room, text, sender=None, origin=None):
@@ -183,9 +215,8 @@ def start_heartbeat():
     while True:
         with state_lock:
             users = list(active_users_local)
-        for user in users:
-            if not refresh_active_user(user):
-                with state_lock:
+            for user in users:
+                if not refresh_active_user(user):
                     active_users_local.discard(user)
         threading.Event().wait(HEARTBEAT_INTERVAL_SECONDS)
 
@@ -402,13 +433,13 @@ def client_session(conn, addr):
 
                 connection_to_user.pop(conn, None)
 
-            if room:
-                remove_user_from_room(username, room)
-            redis_client.delete(session_key(username))
-            release_active_user(username)
-            redis_client.srem(online_users_key(), username)
+                if room:
+                    remove_user_from_room(username, room)
+                redis_client.delete(session_key(username))
+                release_active_user(username)
+                redis_client.srem(online_users_key(), username)
 
-            send_to_room(room, f"{username} disconnected\n")
+                send_to_room(room, f"{username} disconnected\n")
 
         conn.close()
 
