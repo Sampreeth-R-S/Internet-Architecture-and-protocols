@@ -1,0 +1,139 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: chat_redis
+    ports:
+    - 6379:6379
+    volumes:
+    - redis_data:/data
+    networks:
+    - chat_network
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 3s
+      retries: 5
+  server1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_server1
+    environment:
+    - SERVER_PORT=8000
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=0
+    - SERVER_ID=server1
+    - CERT_FILE=/app/cert.pem
+    - KEY_FILE=/app/key.pem
+    ports:
+    - 8000:8000
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - chat_network
+    volumes:
+    - ./cert.pem:/app/cert.pem:ro
+    - ./key.pem:/app/key.pem:ro
+  server2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_server2
+    environment:
+    - SERVER_PORT=8001
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=0
+    - SERVER_ID=server2
+    - CERT_FILE=/app/cert.pem
+    - KEY_FILE=/app/key.pem
+    ports:
+    - 8001:8001
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - chat_network
+    volumes:
+    - ./cert.pem:/app/cert.pem:ro
+    - ./key.pem:/app/key.pem:ro
+  server3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_server3
+    environment:
+    - SERVER_PORT=8002
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=0
+    - SERVER_ID=server3
+    - CERT_FILE=/app/cert.pem
+    - KEY_FILE=/app/key.pem
+    ports:
+    - 8002:8002
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - chat_network
+    volumes:
+    - ./cert.pem:/app/cert.pem:ro
+    - ./key.pem:/app/key.pem:ro
+  server4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_server4
+    environment:
+    - SERVER_PORT=8003
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=0
+    - SERVER_ID=server4
+    - CERT_FILE=/app/cert.pem
+    - KEY_FILE=/app/key.pem
+    ports:
+    - 8003:8003
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - chat_network
+    volumes:
+    - ./cert.pem:/app/cert.pem:ro
+    - ./key.pem:/app/key.pem:ro
+  server5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat_server5
+    environment:
+    - SERVER_PORT=8004
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=0
+    - SERVER_ID=server5
+    - CERT_FILE=/app/cert.pem
+    - KEY_FILE=/app/key.pem
+    ports:
+    - 8004:8004
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - chat_network
+    volumes:
+    - ./cert.pem:/app/cert.pem:ro
+    - ./key.pem:/app/key.pem:ro
+networks:
+  chat_network:
+    driver: bridge
+volumes:
+  redis_data: null
