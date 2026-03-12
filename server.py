@@ -148,8 +148,7 @@ def publish_notification(publisher, message):
 
 
 def set_active_user(user):
-    return redis_client.set(active_key(user), SERVER_ID, nx=True, ex=ACTIVE_TTL_SECONDS
-    )
+    return redis_client.set(active_key(user), SERVER_ID, nx=True, ex=ACTIVE_TTL_SECONDS)
 
 
 def refresh_active_user(user):
@@ -181,6 +180,35 @@ def deliver_notification_to_local(publisher, message):
                 s.sendall(f"Notification from {publisher}: {message}\n".encode())
             except:
                 pass
+
+
+def cleanup_expired_user(user):
+    session = redis_client.hgetall(session_key(user))
+    room = session.get("room")
+    if room:
+        redis_client.srem(room_key(room), user)
+        if room != MAIN_ROOM:
+            remove_room_if_empty_script(keys=[room_key(room), "rooms"], args=[room])
+    redis_client.delete(session_key(user))
+    redis_client.srem(online_users_key(), user)
+    if room:
+        publish_room_message(room, f"{user} disconnected\n")
+
+
+def start_expiry_listener():
+    redis_client.config_set("notify-keyspace-events", "Ex")
+    pubsub = redis_client.pubsub()
+    pubsub.psubscribe("__keyevent@*__:expired")
+    for message in pubsub.listen():
+        if message.get("type") != "pmessage":
+            continue
+        expired_key = message.get("data")
+        if expired_key and expired_key.startswith("active:"):
+            user = expired_key[len("active:"):]
+            try:
+                cleanup_expired_user(user)
+            except Exception as e:
+                print(f"Expiry cleanup error for {user}: {e}")
 
 
 def start_pubsub_listener():
@@ -454,6 +482,7 @@ def start_server():
 
     threading.Thread(target=start_pubsub_listener, daemon=True).start()
     threading.Thread(target=start_heartbeat, daemon=True).start()
+    threading.Thread(target=start_expiry_listener, daemon=True).start()
 
     # Create SSL context
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)

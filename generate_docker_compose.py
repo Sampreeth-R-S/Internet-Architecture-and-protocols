@@ -22,6 +22,7 @@ def generate_docker_compose(num_servers):
             'redis': {
                 'image': 'redis:7-alpine',
                 'container_name': 'chat_redis',
+                'command': 'redis-server --notify-keyspace-events Ex',
                 'ports': ['6379:6379'],
                 'volumes': ['redis_data:/data'],
                 'networks': ['chat_network'],

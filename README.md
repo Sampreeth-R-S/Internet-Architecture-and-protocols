@@ -52,6 +52,13 @@ A thread-based, distributed chat server with TLS encryption, Redis state managem
 - One-command deployment: `docker-compose up --build`
 - Health checks and proper networking
 
+### Server Crash Recovery
+- Automatic cleanup of stale user sessions on server crash
+- Uses Redis keyspace notifications (`notify-keyspace-events Ex`) to detect expired `active:<user>` keys
+- On expiration, the surviving servers remove the user from rooms, online users, and session data
+- Disconnect notification is broadcast to the user's room
+- Cleanup is idempotent and safe when multiple servers process the same event
+
 ## Environment Variables
 
 | Variable | Default | Description |
